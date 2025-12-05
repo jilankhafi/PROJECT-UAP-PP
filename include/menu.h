@@ -1,25 +1,8 @@
-#include <ncurses/curses.h>
-#include "../include/menu.h"
-#include "../include/game.h"
+#ifndef MENU_H
+#define MENU_H
 
-int main() {
-    initscr();
-    noecho();
-    cbreak();
-    curs_set(0);
+int tampilkanMenu();
 
-    while (true) {
-        clear();
-        int pilihan = tampilkanMenu();
+#endif
 
-        if (pilihan == 0) {
-            startGame();
-        } 
-        else if (pilihan == 1) {
-            break;
-        }
-    }
 
-    endwin();
-    return 0;
-}
