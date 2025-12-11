@@ -698,3 +698,651 @@ private:
     Player* player;
     vector<Bullet*> bullets;
     vector<Alien*> aliens;
+vector<PowerUp*> powerups;
+    Star stars[MAX_STARS];
+    
+    int level;
+    int enemySpawnTimer;
+    int powerUpSpawnTimer;
+    int gameSpeed;
+    bool gameOver;
+    bool paused;
+    int frameCount;
+    int bossSpawned;
+    
+    // Warna untuk game
+    void initColors() {
+        start_color();
+        init_pair(1, COLOR_GREEN, COLOR_BLACK);
+        init_pair(2, COLOR_GREEN, COLOR_BLACK);
+        init_pair(3, COLOR_RED, COLOR_BLACK);
+        init_pair(4, COLOR_CYAN, COLOR_BLACK);
+        init_pair(5, COLOR_MAGENTA, COLOR_BLACK);
+        init_pair(6, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(7, COLOR_WHITE, COLOR_BLACK);
+        init_pair(8, COLOR_WHITE, COLOR_BLACK);
+        init_pair(9, COLOR_BLUE, COLOR_BLACK);
+        init_pair(10, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(11, COLOR_RED, COLOR_BLACK);
+        init_pair(12, COLOR_BLUE, COLOR_BLACK);
+        init_pair(13, COLOR_RED, COLOR_BLACK);
+        init_pair(14, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(15, COLOR_CYAN, COLOR_BLACK);
+    }
+    
+    // Spawn alien baru - PERLAMBAT SPAWN RATE
+    void spawnAlien() {
+        if (aliens.size() < MAX_ENEMIES) {
+            int x = rand() % (GAME_WIDTH - 8) + 4;
+            AlienType type = BASIC_ALIEN;
+            
+            // PERLAMBAT SPAWN BOSS DAN MUSUH KUAT
+            int chance = rand() % 100;
+            
+            if (level >= 5 && !bossSpawned && chance < 2) { // Kurangi chance boss
+                type = BOSS_ALIEN;
+                bossSpawned = true;
+            } else if (level > 4 && chance < 8) { // Kurangi chance shooter
+                type = SHOOTER_ALIEN;
+            } else if (level > 3 && chance < 12) { // Kurangi chance strong
+                type = STRONG_ALIEN;
+            } else if (level > 2 && chance < 20) {
+                type = FAST_ALIEN;
+            } else if (level > 1 && chance < 30) {
+                type = MINION_ALIEN;
+            } else {
+                type = BASIC_ALIEN;
+            }
+            
+            aliens.push_back(new Alien(x, 2, type));
+        }
+    }
+    
+    // Spawn power-up
+    void spawnPowerUp() {
+        if (powerups.size() < MAX_POWERUPS && rand() % 100 < 5) { // Kurangi chance power-up
+            int x = rand() % (GAME_WIDTH - 4) + 2;
+            powerups.push_back(new PowerUp(x, 1));
+        }
+    }
+    
+    // Spawn minion untuk boss
+    void spawnBossMinions(int bossX) {
+        if (aliens.size() < MAX_ENEMIES - 4 && frameCount % 120 == 0) { // Kurangi frekuensi spawn minion
+            aliens.push_back(new Alien(bossX - 5, 5, MINION_ALIEN));
+            aliens.push_back(new Alien(bossX + 5, 5, MINION_ALIEN));
+        }
+    }
+    
+    void cleanBullets() {
+        for (auto it = bullets.begin(); it != bullets.end();) {
+            if ((*it)->isOutOfBounds()) {
+                delete *it;
+                it = bullets.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    
+    void cleanAliens() {
+        for (auto it = aliens.begin(); it != aliens.end();) {
+            if ((*it)->isOutOfBounds()) {
+                if ((*it)->getAlienType() == BOSS_ALIEN) {
+                    bossSpawned = false;
+                }
+                delete *it;
+                it = aliens.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    
+    void cleanPowerUps() {
+        for (auto it = powerups.begin(); it != powerups.end();) {
+            if ((*it)->isOutOfBounds()) {
+                delete *it;
+                it = powerups.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    
+    // Deteksi tabrakan dengan sprite besar
+    void checkCollisions() {
+        // Tabrakan peluru pemain dengan alien (DENGAN SPRITE BESAR)
+        for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
+            if ((*bulletIt)->getDirection() == -1) {
+                bool bulletRemoved = false;
+                
+                for (auto alienIt = aliens.begin(); alienIt != aliens.end();) {
+                    Position bulletPos = (*bulletIt)->getPosition();
+                    
+                    // Gunakan deteksi tabrakan dengan sprite besar
+                    if ((*alienIt)->collidesWith(bulletPos.x, bulletPos.y)) {
+                        int damage = (*bulletIt)->getDamage();
+                        if ((*alienIt)->takeDamage(damage)) {
+                            // BERI SKOR HANYA JIKA BERHASIL MENEMBAK (menghancurkan)
+                            player->addScore((*alienIt)->getPoints());
+                            
+                            if ((*alienIt)->getAlienType() == BOSS_ALIEN) {
+                                bossSpawned = false;
+                                // Bonus skor untuk boss
+                                player->addScore(500);
+                                // Spawn banyak power-up sebagai reward
+                                for (int i = 0; i < 3; i++) {
+                                    spawnPowerUp();
+                                }
+                            }
+                            
+                            delete *alienIt;
+                            alienIt = aliens.erase(alienIt);
+                            
+                            // Kurangi chance spawn power-up
+                            if (rand() % 100 < 15) {
+                                spawnPowerUp();
+                            }
+                        } else {
+                            ++alienIt;
+                        }
+                        
+                        if (!(*bulletIt)->pierce()) {
+                            delete *bulletIt;
+                            bulletIt = bullets.erase(bulletIt);
+                            bulletRemoved = true;
+                            break;
+                        }
+                    } else {
+                        ++alienIt;
+                    }
+                }
+                
+                if (!bulletRemoved) ++bulletIt;
+            } else {
+                ++bulletIt;
+            }
+        }
+        
+        // Tabrakan peluru alien dengan pemain
+        for (auto bulletIt = bullets.begin(); bulletIt != bullets.end();) {
+            if ((*bulletIt)->getDirection() == 1) {
+                Position bulletPos = (*bulletIt)->getPosition();
+                Position playerPos = player->getPosition();
+                
+                if (player->collidesWith(bulletPos.x, bulletPos.y)) {
+                    player->loseLife();
+                    delete *bulletIt;
+                    bulletIt = bullets.erase(bulletIt);
+                    
+                    if (player->getLives() <= 0) {
+                        gameOver = true;
+                    }
+                } else {
+                    ++bulletIt;
+                }
+            } else {
+                ++bulletIt;
+            }
+        }
+        
+        // Tabrakan alien dengan pemain (DENGAN SPRITE BESAR)
+        for (auto alienIt = aliens.begin(); alienIt != aliens.end();) {
+            Position alienPos = (*alienIt)->getPosition();
+            Position playerPos = player->getPosition();
+            
+            // Cek semua posisi pemain untuk tabrakan
+            bool collision = false;
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = 0; dy <= 1; dy++) {
+                    if (player->collidesWith(playerPos.x + dx, playerPos.y + dy) &&
+                        (*alienIt)->collidesWith(playerPos.x + dx, playerPos.y + dy)) {
+                        collision = true;
+                        break;
+                    }
+                }
+                if (collision) break;
+            }
+            
+            if (collision) {
+                player->loseLife();
+                
+                if ((*alienIt)->getAlienType() != BOSS_ALIEN) {
+                    delete *alienIt;
+                    alienIt = aliens.erase(alienIt);
+                } else {
+                    ++alienIt;
+                }
+                
+                if (player->getLives() <= 0) {
+                    gameOver = true;
+                }
+            } else {
+                ++alienIt;
+            }
+        }
+        
+        // Tabrakan power-up dengan pemain
+        for (auto powerIt = powerups.begin(); powerIt != powerups.end();) {
+            Position powerPos = (*powerIt)->getPosition();
+            Position playerPos = player->getPosition();
+            
+            if (abs(powerPos.x - playerPos.x) <= 1 && 
+                (powerPos.y == playerPos.y || powerPos.y == playerPos.y + 1)) {
+                int type = (*powerIt)->getType();
+                int duration = 200; // Kurangi durasi power-up
+                
+                switch(type) {
+                    case 0: player->gainLife(); break;
+                    case 1: player->activatePower(duration, LASER); break;
+                    case 2: player->activatePower(duration, MISSILE); break;
+                    case 3: player->activatePower(duration, SPREAD); break;
+                    case 4: player->activatePower(duration, PIERCE); break;
+                    case 5: player->activatePower(duration, NORMAL); break;
+                }
+                
+                // Tambah skor kecil untuk mengambil power-up
+                player->addScore(10);
+                
+                delete *powerIt;
+                powerIt = powerups.erase(powerIt);
+            } else {
+                ++powerIt;
+            }
+        }
+    }
+    
+    // Tembakan pemain
+    void playerShoot() {
+        if (player->canShoot()) {
+            Position pos = player->getPosition();
+            BulletType weaponType = (BulletType)player->getWeaponType();
+            
+            switch(weaponType) {
+                case NORMAL:
+                    bullets.push_back(new Bullet(pos.x, pos.y - 1, -1, NORMAL, 2));
+                    break;
+                case LASER:
+                    bullets.push_back(new Bullet(pos.x, pos.y - 1, -1, LASER, 3));
+                    break;
+                case MISSILE:
+                    bullets.push_back(new Bullet(pos.x, pos.y - 1, -1, MISSILE, 1));
+                    break;
+                case SPREAD:
+                    bullets.push_back(new Bullet(pos.x, pos.y - 1, -1, SPREAD, 2));
+                    bullets.push_back(new Bullet(pos.x - 1, pos.y - 1, -1, SPREAD, 2));
+                    bullets.push_back(new Bullet(pos.x + 1, pos.y - 1, -1, SPREAD, 2));
+                    break;
+                case PIERCE:
+                    bullets.push_back(new Bullet(pos.x, pos.y - 1, -1, PIERCE, 2));
+                    break;
+            }
+            
+            player->resetCooldown();
+        }
+    }
+    
+    // Tembakan alien - PERLAMBAT
+    void alienShoot() {
+        for (auto alien : aliens) {
+            if (alien->canShoot()) {
+                vector<Bullet*> newBullets = alien->shoot();
+                for (auto bullet : newBullets) {
+                    bullets.push_back(bullet);
+                }
+                
+                // Jika boss, spawn minion dengan frekuensi lebih rendah
+                if (alien->getAlienType() == BOSS_ALIEN && frameCount % 150 == 0) {
+                    spawnBossMinions(alien->getPosition().x);
+                }
+            }
+        }
+    }
+    
+    void drawUI() {
+        attron(COLOR_PAIR(9));
+        attron(A_BOLD);
+        
+        // Border game
+        for (int i = 0; i < GAME_WIDTH; i++) {
+            mvaddch(0, i, '=');
+            mvaddch(GAME_HEIGHT, i, '=');
+        }
+        
+        for (int i = 0; i < GAME_HEIGHT; i++) {
+            mvaddch(i, 0, '|');
+            mvaddch(i, GAME_WIDTH, '|');
+        }
+        
+        mvaddch(0, 0, '+');
+        mvaddch(0, GAME_WIDTH, '+');
+        mvaddch(GAME_HEIGHT, 0, '+');
+        mvaddch(GAME_HEIGHT, GAME_WIDTH, '+');
+        
+        // Info pemain
+        mvprintw(1, 2, "LIVES: %d", player->getLives());
+        mvprintw(1, 15, "SCORE: %08d", player->getScore());
+        mvprintw(1, 35, "LEVEL: %d", level);
+        
+        // Info weapon
+        if (player->getPowered()) {
+            string weaponName;
+            switch(player->getWeaponType()) {
+                case LASER: weaponName = "LASER"; break;
+                case MISSILE: weaponName = "MISSILE"; break;
+                case SPREAD: weaponName = "SPREAD"; break;
+                case PIERCE: weaponName = "PIERCE"; break;
+                default: weaponName = "NORMAL";
+            }
+            mvprintw(1, 50, "WEAPON: %s", weaponName.c_str());
+        }
+        
+        // Info alien
+        mvprintw(2, 2, "ALIENS: %d/%d", aliens.size(), MAX_ENEMIES);
+        
+        // Cari boss dan tampilkan health bar
+        for (auto alien : aliens) {
+            if (alien->getAlienType() == BOSS_ALIEN) {
+                int health = alien->getHealth();
+                int maxHealth = alien->getMaxHealth();
+                int barWidth = 20;
+                int filled = (health * barWidth) / maxHealth;
+                
+                mvprintw(2, 50, "BOSS: [");
+                for (int i = 0; i < barWidth; i++) {
+                    if (i < filled) {
+                        attron(COLOR_PAIR(11));
+                        mvaddch(2, 57 + i, '#');
+                        attroff(COLOR_PAIR(11));
+                    } else {
+                        mvaddch(2, 57 + i, '.');
+                    }
+                }
+                mvprintw(2, 57 + barWidth, "] %d/%d", health, maxHealth);
+                break;
+            }
+        }
+        
+        // Kontrol
+        mvprintw(GAME_HEIGHT + 1, 2, "CONTROLS: ARROWS/WASD (Move) | SPACE (Shoot) | P (Pause) | Q (Quit)");
+        mvprintw(GAME_HEIGHT + 2, 2, "POWER-UPS: H=Health L=Laser M=Missile S=Spread P=Pierce D=Shield");
+        
+        attroff(A_BOLD);
+        attroff(COLOR_PAIR(9));
+    }
+    
+    void drawGameOver() {
+        clear();
+        
+        attron(COLOR_PAIR(10));
+        attron(A_BOLD);
+        
+        // Border
+        for (int i = 0; i < GAME_WIDTH; i++) {
+            mvaddch(5, i, '=');
+            mvaddch(GAME_HEIGHT - 5, i, '=');
+        }
+        
+        for (int i = 5; i < GAME_HEIGHT - 4; i++) {
+            mvaddch(i, 10, '|');
+            mvaddch(i, GAME_WIDTH - 10, '|');
+        }
+        
+        mvaddch(5, 10, '+');
+        mvaddch(5, GAME_WIDTH - 10, '+');
+        mvaddch(GAME_HEIGHT - 5, 10, '+');
+        mvaddch(GAME_HEIGHT - 5, GAME_WIDTH - 10, '+');
+        
+        // Pesan game over
+        mvprintw(GAME_HEIGHT / 2 - 2, GAME_WIDTH / 2 - 10, "GAME OVER");
+        mvprintw(GAME_HEIGHT / 2, GAME_WIDTH / 2 - 15, "FINAL SCORE: %08d", player->getScore());
+        mvprintw(GAME_HEIGHT / 2 + 2, GAME_WIDTH / 2 - 12, "Press R to Restart");
+        mvprintw(GAME_HEIGHT / 2 + 3, GAME_WIDTH / 2 - 10, "Press Q to Quit");
+        
+        attroff(A_BOLD);
+        attroff(COLOR_PAIR(10));
+        
+        refresh();
+    }
+    
+    void drawPauseScreen() {
+        attron(COLOR_PAIR(10));
+        attron(A_BOLD);
+        
+        mvprintw(GAME_HEIGHT / 2, GAME_WIDTH / 2 - 5, "PAUSED");
+        mvprintw(GAME_HEIGHT / 2 + 2, GAME_WIDTH / 2 - 12, "Press P to Resume");
+        
+        attroff(A_BOLD);
+        attroff(COLOR_PAIR(10));
+    }
+    
+public:
+    SpaceShooterGame() : level(1), enemySpawnTimer(0), powerUpSpawnTimer(0), 
+                         gameSpeed(40), gameOver(false), paused(false), frameCount(0), bossSpawned(false) {
+        srand(time(NULL));
+        
+        initscr();
+        cbreak();
+        noecho();
+        curs_set(0);
+        timeout(0);
+        keypad(stdscr, TRUE);
+        
+        initColors();
+        
+        player = new Player(GAME_WIDTH / 2, GAME_HEIGHT - 5);
+        
+        for (int i = 0; i < MAX_STARS; i++) {
+            stars[i] = Star();
+        }
+    }
+    
+    ~SpaceShooterGame() {
+        delete player;
+        
+        for (auto bullet : bullets) delete bullet;
+        for (auto alien : aliens) delete alien;
+        for (auto powerup : powerups) delete powerup;
+        
+        endwin();
+    }
+    
+    void processInput() {
+        int ch = getch();
+        
+        switch(ch) {
+            case 'q':
+            case 'Q':
+                gameOver = true;
+                break;
+            case KEY_LEFT:
+            case 'a':
+            case 'A':
+                player->moveLeft();
+                break;
+            case KEY_RIGHT:
+            case 'd':
+            case 'D':
+                player->moveRight();
+                break;
+            case KEY_UP:
+            case 'w':
+            case 'W':
+                player->moveUp();
+                break;
+            case KEY_DOWN:
+            case 's':
+            case 'S':
+                player->moveDown();
+                break;
+            case ' ':
+                if (!paused) {
+                    playerShoot();
+                }
+                break;
+            case 'p':
+            case 'P':
+                paused = !paused;
+                break;
+            case 'r':
+            case 'R':
+                if (gameOver) {
+                    restartGame();
+                }
+                break;
+        }
+    }
+    
+    void update() {
+        if (paused || gameOver) return;
+        
+        frameCount++;
+        
+        // Update bintang
+        for (int i = 0; i < MAX_STARS; i++) {
+            stars[i].update();
+        }
+        
+        // Update player power
+        player->updatePower();
+        
+        // Update bullets
+        for (auto bullet : bullets) {
+            bullet->update();
+        }
+        
+        // Update enemies - PERLAMBAT UPDATE
+        if (frameCount % 2 == 0) {
+            for (auto alien : aliens) {
+                alien->update();
+            }
+        }
+        
+        // Update power-ups
+        for (auto powerup : powerups) {
+            powerup->update();
+        }
+        
+        // PERLAMBAT SPAWN MUSUH
+        enemySpawnTimer++;
+        if (enemySpawnTimer > 80 - (level * 5)) { // Tambah delay spawn
+            spawnAlien();
+            enemySpawnTimer = 0;
+        }
+        
+        // PERLAMBAT SPAWN POWER-UP
+        powerUpSpawnTimer++;
+        if (powerUpSpawnTimer > 400) { // Tambah delay power-up
+            spawnPowerUp();
+            powerUpSpawnTimer = 0;
+        }
+        
+        // PERLAMBAT TEMBAKAN ALIEN
+        if (frameCount % 3 == 0) {
+            alienShoot();
+        }
+        
+        // Naik level lebih lambat
+        if (player->getScore() > level * 1500) {
+            level++;
+            if (gameSpeed > 20) gameSpeed -= 2;
+        }
+        
+        cleanBullets();
+        cleanAliens();
+        cleanPowerUps();
+        
+        checkCollisions();
+    }
+    
+    void render() {
+        clear();
+        
+        // Gambar bintang
+        for (int i = 0; i < MAX_STARS; i++) {
+            stars[i].draw();
+        }
+        
+        // Gambar semua objek
+        for (auto bullet : bullets) bullet->draw();
+        for (auto alien : aliens) alien->draw();
+        for (auto powerup : powerups) powerup->draw();
+        player->draw();
+        
+        drawUI();
+        
+        if (paused) {
+            drawPauseScreen();
+        }
+        
+        refresh();
+    }
+    
+    void restartGame() {
+        level = 1;
+        gameOver = false;
+        paused = false;
+        enemySpawnTimer = 0;
+        powerUpSpawnTimer = 0;
+        gameSpeed = 40;
+        frameCount = 0;
+        bossSpawned = false;
+        
+        for (auto bullet : bullets) delete bullet;
+        for (auto alien : aliens) delete alien;
+        for (auto powerup : powerups) delete powerup;
+        
+        bullets.clear();
+        aliens.clear();
+        powerups.clear();
+        
+        delete player;
+        player = new Player(GAME_WIDTH / 2, GAME_HEIGHT - 5);
+    }
+    
+    void run() {
+        while (!gameOver) {
+            processInput();
+            
+            if (!paused) {
+                update();
+            }
+            
+            render();
+            
+            if (gameOver) {
+                drawGameOver();
+                
+                while (true) {
+                    int ch = getch();
+                    if (ch == 'r' || ch == 'R') {
+                        restartGame();
+                        break;
+                    } else if (ch == 'q' || ch == 'Q') {
+                        gameOver = true;
+                        break;
+                    }
+                    Sleep(50);
+                }
+            }
+            
+            Sleep(gameSpeed);
+        }
+    }
+};
+
+// Fungsi utama
+int main() {
+    try {
+        SpaceShooterGame game;
+        game.run();
+    } catch (const exception& e) {
+        endwin();
+        cerr << "Error: " << e.what() << endl;
+        return 1;
+    }
+    
+    return 0;
+}
+
