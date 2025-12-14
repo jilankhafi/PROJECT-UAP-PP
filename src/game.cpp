@@ -373,4 +373,4 @@ void jalankanGame()
     clear();
     refresh();
     nodelay(stdscr, TRUE);
-
+}
