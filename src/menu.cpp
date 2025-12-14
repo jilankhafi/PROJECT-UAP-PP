@@ -1,6 +1,6 @@
 #include <ncurses/curses.h>
 #include <fstream>
-#include <string>
+#include <cstring>
 #include "../include/menu.h"
 
 using namespace std;
@@ -73,33 +73,45 @@ int showMenu() {
 
     while (true) {
         clear();
-        box(stdscr, 0, 0);
 
         int h, w;
         getmaxyx(stdscr, h, w);
 
+        // ===== BOX LUAR =====
+        box(stdscr, 0, 0);
+
         // ===== TITLE =====
-        int titleWidth = 58;
-        int titleX = (w - titleWidth) / 2;
+        int titleX = (w - 50) / 2;
+        if (titleX < 1) titleX = 1;
         drawTitle(2, titleX);
 
-        // ===== MENU BOX =====
-        int boxWidth = 28;
-        int boxHeight = MENU_COUNT * 2 + 2;
-        int boxStartY = 12;
-        int boxStartX = (w - boxWidth) / 2;
+        // ===== MENU BOX (SUBWINDOW) =====
+        int boxW = 30;
+        int boxH = MENU_COUNT * 2 + 2;
 
-        WINDOW* menuWin = newwin(boxHeight, boxWidth, boxStartY, boxStartX);
+        int boxY = (h - boxH) / 2 + 3;
+        int boxX = (w - boxW) / 2;
+
+        if (boxY < 12) boxY = 12;
+        if (boxX < 2)  boxX = 2;
+
+        WINDOW* menuWin = derwin(stdscr, boxH, boxW, boxY, boxX);
+        werase(menuWin);
         box(menuWin, 0, 0);
 
         for (int i = 0; i < MENU_COUNT; i++) {
+            int y = 1 + i * 2;
+            int x = (boxW - strlen(menuItems[i])) / 2;
+            if (x < 1) x = 1;
+
             if (i == pilihan) wattron(menuWin, A_REVERSE);
-            mvwprintw(menuWin, 1 + i * 2, 3, menuItems[i]);
+            mvwprintw(menuWin, y, x, "%s", menuItems[i]);
             if (i == pilihan) wattroff(menuWin, A_REVERSE);
         }
 
         wrefresh(menuWin);
-        mvprintw(h - 2, 2, "Gunakan ^ v  Enter | ESC untuk keluar");
+
+        mvprintw(h - 2, 3, "UP/DOWN : Navigasi   ENTER : Pilih   ESC : Keluar");
         refresh();
 
         ch = getch();
@@ -113,13 +125,20 @@ int showMenu() {
             pilihan = (pilihan + 1) % MENU_COUNT;
             break;
         case '\n':
-            if (pilihan == 0) { nodelay(stdscr, TRUE); return 0; }
-            if (pilihan == 1) showHighscore();
-            if (pilihan == 2) showHelp();
-            if (pilihan == 3) { nodelay(stdscr, TRUE); return 1; }
+            if (pilihan == 0) { 
+                nodelay(stdscr, TRUE); return 0; 
+            }
+            if (pilihan == 1) {
+                showHighscore();
+            }
+            if (pilihan == 2) {
+                showHelp();
+            }
+            if (pilihan == 3) {
+                return 1;
+            }
             break;
         case 27:
-            nodelay(stdscr, TRUE);
             return 1;
         }
     }
