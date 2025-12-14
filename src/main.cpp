@@ -1,25 +1,42 @@
+#define SDL_MAIN_HANDLED
+#include <locale.h>
 #include <ncurses/curses.h>
 #include "../include/menu.h"
 #include "../include/game.h"
+#include "../include/audio.h"
 
 int main() {
+    // NCURSES
+    setlocale(LC_ALL, "\\");
     initscr();
-    noecho();
     cbreak();
+    noecho();
     curs_set(0);
+    keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE);
 
-    while (true) {
-        clear();
-        int pilihan = tampilkanMenu();
+    // AUDIO
+    if (!initAudio()) {
+        endwin();
+        return 1;
+    }
 
-        if (pilihan == 0) {
-            startGame();
-        } 
-        else if (pilihan == 1) {
-            break;
+    playMenuBGM();
+
+    bool jalan = true;
+    while (jalan) {
+        int pilih = showMenu();
+
+        if (pilih == 0) {
+            stopBGM();      // stop menu music
+            jalankanGame(); // game → playBGM()
+            playMenuBGM();  // balik ke menu
+        } else {
+            jalan = false;
         }
     }
 
+    closeAudio();
     endwin();
     return 0;
 }
